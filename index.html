@@ -306,22 +306,50 @@
   }
   .skl-action-btn:disabled { border-color: var(--gray-border); color: var(--gray-border); }
 
-  /* ===== SKLAD: report screen ===== */
-  .skl-report-wrap { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 4px; overflow: hidden; padding: 6px 10px 6px; }
-  .skl-report-block { flex: 1; min-height: 0; display: flex; flex-direction: column; }
-  .skl-report-block-label { font-size: 9px; font-weight: 800; color: var(--red); margin: 0 0 1px 2px; flex-shrink: 0; }
-  .skl-report-table { width: 100%; flex: 1; min-height: 0; border-collapse: collapse; border: 1.5px solid var(--red); border-radius: 4px; overflow: hidden; font-size: 13px; table-layout: fixed; }
+  /* ===== SKLAD: report screen =====
+     FIX (наезжание шапки "2000" на таблицу "Пачки"): раньше .skl-report-block имел
+     flex:1; min-height:0, из-за чего флексбокс насильно сжимал 4 таблицы под высоту
+     экрана. <table> в Safari/iOS плохо сжимается таким способом — при большом
+     количестве строк таблица не ужималась до нужной высоты и наезжала на подпись
+     следующего блока. Теперь блоки берут естественную высоту (flex: 0 0 auto),
+     а сама обёртка обрезает лишнее по overflow:hidden — без скролла, но и без наезда. */
+  .skl-report-wrap {
+    flex: 1; min-height: 0;
+    display: flex; flex-direction: column;
+    gap: 2px;
+    overflow: hidden;
+    padding: 4px 10px 4px;
+  }
+  .skl-report-block {
+    flex: 0 0 auto;
+    display: flex; flex-direction: column;
+  }
+  .skl-report-block-label {
+    font-size: 9px; font-weight: 800; color: var(--red);
+    margin: 0 0 0 2px;
+    line-height: 1.2;
+    flex-shrink: 0;
+  }
+  .skl-report-table {
+    width: 100%;
+    border-collapse: collapse;
+    border: 1.5px solid var(--red);
+    border-radius: 4px;
+    overflow: hidden;
+    font-size: 12px;
+    table-layout: fixed;
+  }
   .skl-report-table th {
-    background: var(--black); color: var(--white); padding: 1px; font-size: 10px; font-weight: 700; text-align: center;
+    background: var(--black); color: var(--white); padding: 0px 1px; font-size: 9px; font-weight: 700; text-align: center;
     border-right: 1px solid rgba(255,255,255,0.2);
   }
   .skl-report-table th:last-child { border-right: none; }
   .skl-report-table tbody th {
-    background: var(--gray-bg); color: var(--black); text-align: left; padding: 1px 2px;
+    background: var(--gray-bg); color: var(--black); text-align: left; padding: 0px 2px;
     border-right: 1px solid var(--gray-border); border-bottom: 1px solid var(--gray-border);
   }
   .skl-report-table td {
-    text-align: center; color: var(--black); font-weight: 700;
+    text-align: center; color: var(--black); font-weight: 700; padding: 0px;
     border-bottom: 1px solid var(--gray-border); border-right: 1px solid var(--gray-border);
   }
   .skl-report-table td:last-child { border-right: none; }
