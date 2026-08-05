@@ -164,6 +164,12 @@
   .key:active { background: var(--gray-border); }
   .key.ghost { visibility: hidden; }
 
+  /* Sklad's own keypad is more compact than the login/code keypad — matches the
+     original standalone app, leaves enough room for the grid table above it. */
+  #sklKeypad { gap: 5px; }
+  #sklKeypad .key { padding: 8px 0; font-size: 15px; }
+  #sklKeypad .key.add-key { font-size: 22px; }
+
   /* ===== Generic swipe engine ===== */
   .swipe-viewport {
     flex: 1;
