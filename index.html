@@ -170,6 +170,14 @@
   #sklKeypad .key { padding: 8px 0; font-size: 15px; }
   #sklKeypad .key.add-key { font-size: 22px; }
 
+  /* Admin's "Редактирование · Склад" screen reuses the same grid+keypad layout as
+     the standalone Sklad screen, so its keypad needs the same compact sizing —
+     otherwise it falls back to the large login-style keys and the table gets
+     pushed out of view (cut-off rows above the keypad). */
+  #admSkladKeypad { gap: 5px; }
+  #admSkladKeypad .key { padding: 8px 0; font-size: 15px; }
+  #admSkladKeypad .key.add-key { font-size: 22px; }
+
   /* ===== Generic swipe engine ===== */
   .swipe-viewport {
     flex: 1;
@@ -686,7 +694,7 @@
           <div class="skl-add-wrap">
             <div class="skl-grid-wrap" id="admSkladGridWrap"><div class="loading-note">Загрузка...</div></div>
             <div class="field-display" id="admSkladValDisplay">0</div>
-            <div class="keypad" id="admSkladKeypad" style="gap:5px;"></div>
+            <div class="keypad" id="admSkladKeypad"></div>
             <div class="skl-btn-row">
               <button class="skl-action-btn" id="admSkladClearAllBtn">ОЧИСТИТЬ ВСЕ</button>
               <button class="skl-action-btn" id="admSkladDeleteBtn" disabled>УДАЛИТЬ</button>
