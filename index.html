@@ -781,6 +781,7 @@
     function endDrag() {
       if (!dragging) return;
       dragging = false;
+      const prevIndex = index;
       if (axisLocked === "x") {
         const threshold = viewportEl.clientWidth * 0.16;
         if (deltaX < -threshold && index < count - 1) index++;
@@ -788,7 +789,11 @@
       }
       applyTransform(true);
       updateDots();
-      if (opts.onChange) opts.onChange(index);
+      // Only notify listeners when a real swipe actually changed the screen —
+      // NOT on a plain tap (e.g. selecting a Sklad grid cell). Firing onChange
+      // on every touchend used to force a mid-tap re-render that discarded
+      // the cell selection and swallowed the click that was supposed to make it.
+      if (index !== prevIndex && opts.onChange) opts.onChange(index);
     }
     viewportEl.addEventListener("touchend", endDrag, { passive: true });
     viewportEl.addEventListener("touchcancel", endDrag, { passive: true });
@@ -955,7 +960,7 @@
       if (!dataByTable[t.id][r]) dataByTable[t.id][r] = {};
       dataByTable[t.id][r][c] = Number(v);
       valStr = "";
-      renderVal(); renderGrid(); updateBtnState();
+      renderVal(); renderGrid(); renderReport(); updateBtnState();
       fetch(API_URL, {
         method: "POST",
         headers: { "Content-Type": "text/plain;charset=utf-8" },
@@ -972,7 +977,7 @@
       showToast(`Очищено: ${t.label} · ${r}, ${c}`);
       dataByTable[t.id][r][c] = "";
       valStr = "";
-      renderVal(); renderGrid(); updateBtnState();
+      renderVal(); renderGrid(); renderReport(); updateBtnState();
       fetch(API_URL, {
         method: "POST",
         headers: { "Content-Type": "text/plain;charset=utf-8" },
@@ -988,7 +993,7 @@
       if (!ok) return;
       ROWS.forEach(r => { COLS.forEach(c => { if (!dataByTable[t.id][r]) dataByTable[t.id][r] = {}; dataByTable[t.id][r][c] = ""; }); });
       selectedRow = null; selectedCol = null; valStr = "";
-      renderVal(); renderGrid(); updateBtnState();
+      renderVal(); renderGrid(); renderReport(); updateBtnState();
       fetch(API_URL, {
         method: "POST",
         headers: { "Content-Type": "text/plain;charset=utf-8" },
