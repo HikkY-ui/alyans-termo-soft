@@ -743,12 +743,12 @@
           </div>
         </div>
 
-        <!-- Screen 1: Отчёт · Склад (read-only) -->
+        <!-- Screen 1: Склад (read-only report) -->
         <div class="swipe-screen">
           <div class="skl-report-wrap" id="admSkladReportWrap"><div class="loading-note">Загрузка...</div></div>
         </div>
 
-        <!-- Screen 2: Редактирование · Цех (full add form) -->
+        <!-- Screen 2: Цех (edit — full add form) -->
         <div class="swipe-screen">
           <div id="admTsekhEdit" style="padding: 5px 16px 5px; gap: 3px; display: flex; flex-direction: column; flex: 1; min-height: 0;">
             <div>
@@ -774,7 +774,7 @@
           </div>
         </div>
 
-        <!-- Screen 3: Редактирование · Склад (grid + keypad, vertical swipe cycles tables) -->
+        <!-- Screen 3: Склад (edit — grid + keypad, vertical swipe cycles tables) -->
         <div class="swipe-screen">
           <div class="skl-add-wrap">
             <div class="skl-grid-wrap" id="admSkladGridWrap"><div class="loading-note">Загрузка...</div></div>
@@ -787,13 +787,34 @@
           </div>
         </div>
 
-        <!-- Screen 4: Выход -->
+        <!-- Screen 4: Редактирование · Сырьё (identical to the Сырьё role screen) -->
+        <div class="swipe-screen">
+          <div class="syre-wrap">
+            <table class="skl-table syre-summary-table">
+              <thead><tr><th>201</th><th>301</th><th>401</th><th>МИКС</th></tr></thead>
+              <tbody><tr>
+                <td id="admSyreSum-201">0</td>
+                <td id="admSyreSum-301">0</td>
+                <td id="admSyreSum-401">0</td>
+                <td id="admSyreSum-МИКС">0</td>
+              </tr></tbody>
+            </table>
+            <div class="syre-fields" id="admSyreFields"></div>
+            <div class="keypad" id="admSyreKeypad"></div>
+            <div class="skl-btn-row">
+              <button class="skl-action-btn" id="admSyreClearAllBtn">ОЧИСТИТЬ ВСЕ</button>
+              <button class="skl-action-btn" id="admSyreDeleteBtn" disabled>УДАЛИТЬ</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Screen 5: Выход -->
         <div class="swipe-screen"><div class="exit-screen"><button class="exit-btn" data-exit="admin">Выйти</button></div></div>
 
       </div>
     </div>
     <div class="dots-indicator" id="adminDots">
-      <div class="idot active"></div><div class="idot"></div><div class="idot"></div><div class="idot"></div><div class="idot"></div>
+      <div class="idot active"></div><div class="idot"></div><div class="idot"></div><div class="idot"></div><div class="idot"></div><div class="idot"></div>
     </div>
   </div>
 
@@ -811,7 +832,7 @@
     syre: "4444"
   };
   const ROLE_TITLES = { admin: "Администратор", sklad: "Склад", tsekh: "Цех", syre: "Сырьё" };
-  const ADMIN_SCREEN_TITLES = ["Отчёт · Цех", "Отчёт · Склад", "Редактирование · Цех", "Редактирование · Склад", "Выход"];
+  const ADMIN_SCREEN_TITLES = ["Отчёт · Цех", "Склад", "Цех", "Склад", "Сырьё", "Выход"];
 
   const STORAGE_KEY = "at_role";
 
@@ -1437,7 +1458,7 @@
     }
 
     function renderFields() {
-      document.querySelectorAll(".syre-field-row").forEach((row, i) => {
+      document.querySelectorAll("#syreFields .syre-field-row").forEach((row, i) => {
         const display = row.querySelector(".field-display");
         const isActive = i === activeIndex;
         display.textContent = isActive && valStr !== "" ? valStr : "0";
@@ -1596,6 +1617,211 @@
     }
 
     return { init, stopPolling };
+  })();
+
+  // ==================== ADMIN · SYRE (edit — shares the same data source as the Сырьё role) ====================
+  const AdminSyre = (function () {
+    const API_URL = "https://script.google.com/macros/s/AKfycbxPxSFtq6gqhkEBxVvFnxMo2svDX2i4IQ0byLcnk1KovPpucplwY3zuXmHABhoojev9Mg/exec";
+    const MATERIALS = ["201", "301", "401", "МИКС"];
+
+    let values = { "201": 0, "301": 0, "401": 0, "МИКС": 0 };
+    let activeIndex = 0;
+    let valStr = "";
+    let loaded = false;
+
+    let reqSeq = 0;
+    let appliedSeq = 0;
+    let appliedSeqByMaterial = { "201": 0, "301": 0, "401": 0, "МИКС": 0 };
+    let pendingSaves = 0;
+    let pollTimer = null;
+
+    function activeMaterial() { return MATERIALS[activeIndex]; }
+
+    async function loadValues() {
+      if (pendingSaves > 0) return;
+      const mySeq = ++reqSeq;
+      try {
+        const res = await fetch(`${API_URL}?action=getData`);
+        const data = await res.json();
+        if (data.success && mySeq > appliedSeq && pendingSaves === 0) {
+          appliedSeq = mySeq;
+          values = data.values;
+          MATERIALS.forEach(m => { appliedSeqByMaterial[m] = mySeq; });
+          loaded = true;
+          renderSummary();
+        }
+      } catch (err) {
+        // Keep whatever is already on screen — data will refresh on next successful action.
+      }
+    }
+
+    function setPolling(active) {
+      if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+      if (active) {
+        if (loaded) renderSummary();
+        loadValues();
+        pollTimer = setInterval(loadValues, 5000);
+      }
+    }
+
+    function renderSummary() {
+      MATERIALS.forEach(m => {
+        const el = document.getElementById(`admSyreSum-${m}`);
+        if (el) el.textContent = values[m] ?? 0;
+      });
+    }
+
+    function renderFields() {
+      document.querySelectorAll("#admSyreFields .syre-field-row").forEach((row, i) => {
+        const display = row.querySelector(".field-display");
+        const isActive = i === activeIndex;
+        display.textContent = isActive && valStr !== "" ? valStr : "0";
+        display.classList.toggle("filled", isActive && valStr !== "");
+        display.classList.toggle("active", isActive);
+      });
+    }
+
+    function buildFields() {
+      const wrap = document.getElementById("admSyreFields");
+      wrap.innerHTML = "";
+      MATERIALS.forEach((m, i) => {
+        const row = document.createElement("div");
+        row.className = "syre-field-row";
+        row.innerHTML = `<div class="syre-field-label">${m}</div><div class="field-display">0</div>`;
+        row.querySelector(".field-display").onclick = () => {
+          activeIndex = i; valStr = "";
+          renderFields(); updateBtnState();
+        };
+        wrap.appendChild(row);
+      });
+    }
+
+    function buildKeypad() {
+      const keypad = document.getElementById("admSyreKeypad");
+      keypad.innerHTML = "";
+      ["1","2","3","4","5","6","7","8","9"].forEach(k => {
+        const btn = document.createElement("button");
+        btn.className = "key";
+        btn.textContent = k;
+        btn.onclick = () => handleDigit(k);
+        keypad.appendChild(btn);
+      });
+      const addBtn = document.createElement("button");
+      addBtn.className = "key add-key";
+      addBtn.id = "admSyreAddBtn";
+      addBtn.textContent = "✓";
+      addBtn.disabled = true;
+      addBtn.onclick = () => commitValue(1);
+      keypad.appendChild(addBtn);
+
+      const zeroBtn = document.createElement("button");
+      zeroBtn.className = "key";
+      zeroBtn.textContent = "0";
+      zeroBtn.onclick = () => handleDigit("0");
+      keypad.appendChild(zeroBtn);
+
+      const backBtn = document.createElement("button");
+      backBtn.className = "key";
+      backBtn.textContent = "⌫";
+      backBtn.onclick = () => {
+        valStr = valStr.slice(0, -1);
+        renderFields(); updateBtnState();
+      };
+      keypad.appendChild(backBtn);
+    }
+
+    function handleDigit(k) {
+      if (valStr.length < 6) valStr += k;
+      renderFields(); updateBtnState();
+    }
+
+    function updateBtnState() {
+      const hasVal = valStr !== "" && Number(valStr) > 0;
+      document.getElementById("admSyreAddBtn").disabled = !hasVal;
+      document.getElementById("admSyreDeleteBtn").disabled = !hasVal;
+    }
+
+    function advanceField() {
+      activeIndex = (activeIndex + 1) % MATERIALS.length;
+      valStr = "";
+      renderFields(); updateBtnState();
+    }
+
+    function commitValue(sign) {
+      if (valStr === "" || Number(valStr) <= 0) return;
+      const material = activeMaterial();
+      const qty = sign * Number(valStr);
+      const label = sign > 0 ? "+" : "−";
+      showToast(`${material}: ${label}${valStr}`);
+
+      values[material] = Math.max(0, (values[material] || 0) + qty);
+      renderSummary();
+      advanceField();
+
+      pendingSaves++;
+      const mySeq = ++reqSeq;
+      fetch(API_URL, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify({ action: "add", material, qty })
+      }).then(res => res.json()).then(data => {
+        if (data.success) {
+          if (mySeq > appliedSeqByMaterial[material]) {
+            appliedSeqByMaterial[material] = mySeq;
+            const serverVal = data.values ? data.values[material] : undefined;
+            if (serverVal !== undefined) { values[material] = serverVal; renderSummary(); }
+          }
+        } else {
+          showToast("Не сохранилось на сервере — попробуйте снова");
+        }
+      }).catch(() => showToast("Ошибка сети — не сохранено"))
+        .finally(() => { pendingSaves--; });
+    }
+
+    function clearAll() {
+      const ok = confirm("Точно очистить все количества сырья? Это действие нельзя отменить.");
+      if (!ok) return;
+      MATERIALS.forEach(m => values[m] = 0);
+      renderSummary();
+      activeIndex = 0; valStr = "";
+      renderFields(); updateBtnState();
+
+      pendingSaves++;
+      const mySeq = ++reqSeq;
+      fetch(API_URL, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify({ action: "clearAll" })
+      }).then(res => res.json()).then(data => {
+        if (data.success) {
+          if (mySeq > appliedSeq) {
+            appliedSeq = mySeq;
+            MATERIALS.forEach(m => {
+              values[m] = (data.values && data.values[m] !== undefined) ? data.values[m] : 0;
+              appliedSeqByMaterial[m] = mySeq;
+            });
+            renderSummary();
+          }
+          showToast("Очищено");
+        } else {
+          showToast("Не удалось очистить на сервере");
+        }
+      }).catch(() => showToast("Ошибка сети"))
+        .finally(() => { pendingSaves--; });
+    }
+
+    let initialized = false;
+    function init() {
+      if (initialized) return;
+      initialized = true;
+      buildFields();
+      buildKeypad();
+      renderFields();
+      updateBtnState();
+      document.getElementById("admSyreClearAllBtn").onclick = clearAll;
+      document.getElementById("admSyreDeleteBtn").onclick = () => commitValue(-1);
+    }
+    return { init, setPolling };
   })();
 
   // ==================== ADMIN · TSEKH (report + edit, sharing one data source) ====================
@@ -1794,7 +2020,7 @@
       }
     }
     function updateHeaderForEdit() {
-      if (editActive) document.getElementById("adminScreenTitle").textContent = "Ред. Склад · " + currentTable().label;
+      if (editActive) document.getElementById("adminScreenTitle").textContent = "Склад · " + currentTable().label;
     }
     function renderGrid() {
       if (!loaded) return;
@@ -1997,11 +2223,11 @@
       );
       Syre.init();
     } else if (role === "admin") {
-      fixTrackChildWidths(document.getElementById("adminTrack"), 5);
+      fixTrackChildWidths(document.getElementById("adminTrack"), 6);
       swipers.admin = createSwiper(
         document.getElementById("adminViewport"),
         document.getElementById("adminTrack"),
-        5,
+        6,
         {
           dotsEl: document.getElementById("adminDots"),
           onChange: (i) => {
@@ -2009,11 +2235,13 @@
             AdminTsekh.setPolling(i === 0);   // auto-refresh only while viewing the Цех report, matching the original app
             setAdminHeaderTsekhActive(i === 0); // header swaps to "АТ · Цех" + stats only on the Цех report screen
             AdminSklad.setEditActive(i === 3); // vertical swipe (table cycling) only live on the Склад edit screen
+            AdminSyre.setPolling(i === 4);    // auto-refresh only while viewing the Сырьё edit screen
           }
         }
       );
       AdminTsekh.init();
       AdminSklad.init();
+      AdminSyre.init();
     }
     return swipers[role];
   }
