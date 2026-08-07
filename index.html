@@ -1383,15 +1383,25 @@
     let loaded = false;
 
     // ---- Anti-race-condition state ----
-    // reqSeq/appliedSeq: every request that can update `values` (poll or save) gets an
-    // increasing id; a response is only applied if its id is newer than the last one we
-    // actually applied. This stops a slow, older request's response from landing after a
-    // newer one and overwriting fresher data with a stale snapshot.
+    // reqSeq: every request that can update `values` (poll, add, or clearAll) gets an
+    // increasing id.
+    // appliedSeq: id of the last FULL-SNAPSHOT response we applied (poll / clearAll —
+    // both are authoritative for the whole table). A full snapshot is only applied if
+    // it's newer than the last one we applied, so a slow old poll can't overwrite a
+    // newer one.
+    // appliedSeqByMaterial: id of the last response applied to EACH individual material.
+    // An `add` response is only authoritative for the one material it was sent for — the
+    // server may still be mid-flight on a concurrent add for a *different* material, so
+    // its response must never overwrite the other three fields. This is what previously
+    // caused the numbers to visibly jump: replacing the whole `values` object from a
+    // single material's response briefly reverted the other, still-unconfirmed materials
+    // to their old value until their own response landed.
     // pendingSaves: while an add/clearAll is in flight, the periodic poll skips applying
     // (or skips entirely) so it can't roll back a value the user just entered but the
     // server hasn't confirmed yet.
     let reqSeq = 0;
     let appliedSeq = 0;
+    let appliedSeqByMaterial = { "201": 0, "301": 0, "401": 0, "МИКС": 0 };
     let pendingSaves = 0;
     let pollTimer = null;
 
@@ -1407,6 +1417,7 @@
         if (data.success && mySeq > appliedSeq && pendingSaves === 0) {
           appliedSeq = mySeq;
           values = data.values;
+          MATERIALS.forEach(m => { appliedSeqByMaterial[m] = mySeq; }); // this is a full, authoritative snapshot
           loaded = true;
           renderSummary();
         }
@@ -1527,9 +1538,15 @@
         body: JSON.stringify({ action: "add", material, qty })
       }).then(res => res.json()).then(data => {
         if (data.success) {
-          // Only apply if no newer request has already landed — an older response
-          // arriving late must not overwrite data a more recent request already set.
-          if (mySeq > appliedSeq) { appliedSeq = mySeq; values = data.values; renderSummary(); }
+          // Only touch the ONE material this request was for, and only if no newer
+          // response for that same material has already landed. A concurrent add for a
+          // different material may still be unconfirmed server-side, so its value in
+          // this response isn't authoritative yet — leave the other fields alone.
+          if (mySeq > appliedSeqByMaterial[material]) {
+            appliedSeqByMaterial[material] = mySeq;
+            const serverVal = data.values ? data.values[material] : undefined;
+            if (serverVal !== undefined) { values[material] = serverVal; renderSummary(); }
+          }
         } else {
           showToast("Не сохранилось на сервере — попробуйте снова");
         }
@@ -1553,7 +1570,14 @@
         body: JSON.stringify({ action: "clearAll" })
       }).then(res => res.json()).then(data => {
         if (data.success) {
-          if (mySeq > appliedSeq) { appliedSeq = mySeq; values = data.values; renderSummary(); }
+          if (mySeq > appliedSeq) {
+            appliedSeq = mySeq;
+            MATERIALS.forEach(m => {
+              values[m] = (data.values && data.values[m] !== undefined) ? data.values[m] : 0;
+              appliedSeqByMaterial[m] = mySeq; // invalidate any earlier add responses still in flight
+            });
+            renderSummary();
+          }
           showToast("Очищено");
         } else {
           showToast("Не удалось очистить на сервере");
