@@ -73,6 +73,30 @@
   }
   .header-spacer { width: 28px; flex-shrink: 0; }
 
+  /* ===== Admin: header swap (default title vs small Сырьё table on the Цех report screen) ===== */
+  .admin-header-default {
+    display: flex; align-items: center; justify-content: space-between; width: 100%;
+  }
+  .admin-header-syre { display: none; width: 100%; }
+  .syre-header-table { width: 100%; border-collapse: collapse; }
+  .syre-header-table th {
+    font-size: 9px; font-weight: 700; color: var(--gray-text); text-transform: uppercase;
+    padding: 0 2px 1px; text-align: center;
+  }
+  .syre-header-table td {
+    font-size: 14px; font-weight: 800; color: var(--black); text-align: center; padding: 0 2px;
+  }
+
+  /* ===== Admin: compact single-line stat boxes (Цех report screen only) ===== */
+  .admin-compact-stats { padding: 3px 10px 3px; gap: 6px; }
+  .admin-compact-stats .stat-box {
+    display: flex; align-items: baseline; justify-content: center; gap: 4px; padding: 3px 4px;
+  }
+  .admin-compact-stats .stat-label {
+    font-size: 8px; font-weight: 700; color: var(--gray-text); text-transform: uppercase; letter-spacing: 0.2px; margin-top: 0;
+  }
+  .admin-compact-stats .stat-value { font-size: 11px; font-weight: 800; color: var(--black); line-height: 1; }
+
   /* ===== Screen: Login (role select) ===== */
   #screenLogin { justify-content: center; padding: 24px; gap: 14px; }
   .login-logo { text-align: center; margin-bottom: 18px; }
@@ -689,9 +713,22 @@
   <!-- ===================== ADMIN APP ===================== -->
   <div class="top-screen" id="appAdmin">
     <header>
-      <div class="brand">А<span>Т</span></div>
-      <div class="header-title" id="adminScreenTitle">Отчёт · Цех</div>
-      <div class="header-spacer"></div>
+      <div class="admin-header-default" id="adminHeaderDefault">
+        <div class="brand">А<span>Т</span></div>
+        <div class="header-title" id="adminScreenTitle">Отчёт · Цех</div>
+        <div class="header-spacer"></div>
+      </div>
+      <div class="admin-header-syre" id="adminHeaderSyre">
+        <table class="syre-header-table">
+          <thead><tr><th>201</th><th>301</th><th>401</th><th>МИКС</th></tr></thead>
+          <tbody><tr>
+            <td id="admHeaderSyre-201">0</td>
+            <td id="admHeaderSyre-301">0</td>
+            <td id="admHeaderSyre-401">0</td>
+            <td id="admHeaderSyre-МИКС">0</td>
+          </tr></tbody>
+        </table>
+      </div>
     </header>
     <div class="swipe-viewport" id="adminViewport">
       <div class="swipe-track" id="adminTrack">
@@ -699,14 +736,12 @@
         <!-- Screen 0: Отчёт · Цех (read-only) -->
         <div class="swipe-screen">
           <div style="flex:1; min-height:0; display:flex; flex-direction:column;">
-            <div class="stats-row">
+            <div class="stats-row admin-compact-stats" id="admTsekhStatsRow">
               <div class="stat-box">
-                <div class="stat-value" id="admTsekhBlocksVal">—</div>
-                <div class="stat-label">Блоков в цеху</div>
+                <span class="stat-label">Блоков в цеху:</span> <span class="stat-value" id="admTsekhBlocksVal">—</span>
               </div>
               <div class="stat-box">
-                <div class="stat-value" id="admTsekhFreeVal">—</div>
-                <div class="stat-label">Свободных мест</div>
+                <span class="stat-label">Свободных мест:</span> <span class="stat-value" id="admTsekhFreeVal">—</span>
               </div>
             </div>
             <div class="tsk-table-wrap" id="admTsekhReportWrap"><div class="loading-note">Загрузка...</div></div>
@@ -1840,6 +1875,40 @@
     return { init, setEditActive };
   })();
 
+  // ==================== ADMIN · SYRE HEADER (small report table that replaces the header on Отчёт · Цех) ====================
+  const AdminSyreHeader = (function () {
+    const API_URL = "https://script.google.com/macros/s/AKfycbxPxSFtq6gqhkEBxVvFnxMo2svDX2i4IQ0byLcnk1KovPpucplwY3zuXmHABhoojev9Mg/exec";
+    const MATERIALS = ["201", "301", "401", "МИКС"];
+    let pollTimer = null;
+
+    async function loadAndRender() {
+      try {
+        const res = await fetch(`${API_URL}?action=getData`);
+        const data = await res.json();
+        if (data.success) {
+          MATERIALS.forEach(m => {
+            const el = document.getElementById(`admHeaderSyre-${m}`);
+            if (el) el.textContent = data.values[m] ?? 0;
+          });
+        }
+      } catch (err) {
+        // Small header table — keep showing whatever was last loaded rather than an error state.
+      }
+    }
+
+    function setActive(active) {
+      document.getElementById("adminHeaderDefault").style.display = active ? "none" : "flex";
+      document.getElementById("adminHeaderSyre").style.display = active ? "flex" : "none";
+      if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+      if (active) {
+        loadAndRender();
+        pollTimer = setInterval(loadAndRender, 5000);
+      }
+    }
+
+    return { setActive };
+  })();
+
   // ==================== ROLE SWIPERS (created once, lazily) ====================
   const swipers = {};
 
@@ -1882,6 +1951,7 @@
           onChange: (i) => {
             document.getElementById("adminScreenTitle").textContent = ADMIN_SCREEN_TITLES[i];
             AdminTsekh.setPolling(i === 0);   // auto-refresh only while viewing the Цех report, matching the original app
+            AdminSyreHeader.setActive(i === 0); // header swaps to the Сырьё table only on the Цех report screen
             AdminSklad.setEditActive(i === 3); // vertical swipe (table cycling) only live on the Склад edit screen
           }
         }
