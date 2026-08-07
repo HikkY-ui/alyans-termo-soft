@@ -73,21 +73,21 @@
   }
   .header-spacer { width: 28px; flex-shrink: 0; }
 
-  /* ===== Admin: header swap (default title vs compact "АТ · Цех" + stats, on the Цех report screen) ===== */
+  /* ===== Admin: header swap (default title vs compact "АТ" + stats pills, on the Цех report screen) ===== */
   .admin-header-default {
     display: flex; align-items: center; justify-content: space-between; width: 100%;
   }
   .admin-header-tsekh { display: none; width: 100%; align-items: center; justify-content: space-between; }
-  .admin-header-tsekh-left { display: flex; align-items: baseline; gap: 22px; }
-  .admin-header-tsekh-label {
-    font-size: 13px; font-weight: 800; color: var(--black);
+  .admin-header-tsekh-stats { display: flex; align-items: center; gap: 6px; }
+  .admin-header-tsekh-pill {
+    display: flex; align-items: baseline; gap: 4px;
+    border: 2px solid var(--red); border-radius: 20px; padding: 2px 8px;
   }
-  .admin-header-tsekh-stats { display: flex; flex-direction: column; align-items: flex-end; gap: 0; }
-  .admin-header-tsekh-stat { white-space: nowrap; line-height: 1.1; }
-  .admin-header-tsekh-stat .stat-label {
-    font-size: 8px; font-weight: 700; color: var(--gray-text); text-transform: uppercase; letter-spacing: 0.2px; margin-right: 3px;
+  .admin-header-tsekh-pill .stat-label {
+    font-size: 8px; font-weight: 700; color: var(--gray-text); text-transform: uppercase; letter-spacing: 0.2px;
   }
-  .admin-header-tsekh-stat .stat-value { font-size: 13px; font-weight: 800; color: var(--black); }
+  .admin-header-tsekh-pill .stat-value { font-size: 13px; font-weight: 800; color: var(--black); }
+
 
   /* ===== Screen: Login (role select) ===== */
   #screenLogin { justify-content: center; padding: 24px; gap: 14px; }
@@ -349,12 +349,12 @@
   .syre-summary-table { height: auto; flex-shrink: 0; border-color: var(--black); font-size: 20px; }
   .syre-summary-table thead th { padding: 8px 1px; font-size: 15px; }
   .syre-summary-table tbody td { padding: 10px 1px; font-size: 20px; font-weight: 800; color: var(--black); border-color: var(--gray-border); }
-  .syre-fields { display: flex; flex-direction: column; gap: 5px; flex-shrink: 0; }
-  .syre-field-row { display: flex; align-items: center; gap: 8px; }
-  .syre-field-label { width: 46px; flex-shrink: 0; font-size: 13px; font-weight: 800; color: var(--black); text-align: left; }
-  .syre-field-row .field-display { flex: 1; width: auto; padding: 7px 5px; font-size: 15px; }
+  .syre-fields { display: flex; flex-direction: column; gap: 8px; flex: 1; min-height: 0; }
+  .syre-field-row { display: flex; align-items: stretch; gap: 8px; flex: 1; }
+  .syre-field-label { width: 46px; flex-shrink: 0; font-size: 13px; font-weight: 800; color: var(--black); text-align: left; display: flex; align-items: center; }
+  .syre-field-row .field-display { flex: 1; width: auto; display: flex; align-items: center; justify-content: center; padding: 5px; font-size: 20px; }
 
-  #syreKeypad { gap: 7px; }
+  #syreKeypad { gap: 7px; flex-shrink: 0; }
   #syreKeypad .key { padding: 12px 0; font-size: 17px; }
   #syreKeypad .key.add-key { font-size: 22px; }
 
@@ -492,9 +492,10 @@
   .tsk-table thead tr.tsk-syre-row th {
     background: var(--white);
     color: var(--black);
-    padding: 0px 1px;
+    padding: 1px 1px;
+    font-size: 16px;
     font-weight: 800;
-    line-height: 1.05;
+    line-height: 1.1;
     border-right: 1px solid var(--gray-border);
     border-bottom: 1px solid var(--gray-border);
   }
@@ -714,26 +715,22 @@
 
   <!-- ===================== ADMIN APP ===================== -->
   <div class="top-screen" id="appAdmin">
-    <header>
+    <header id="adminHeader">
       <div class="admin-header-default" id="adminHeaderDefault">
         <div class="brand">А<span>Т</span></div>
         <div class="header-title" id="adminScreenTitle">Отчёт · Цех</div>
-        <div class="date-pill" style="font-size:10px;font-weight:700;color:var(--red);border:2px solid var(--red);border-radius:20px;padding:1px 8px;">—</div>
+        <div class="header-spacer"></div>
       </div>
       <div class="admin-header-tsekh" id="adminHeaderTsekh">
-        <div class="admin-header-tsekh-left">
-          <div class="brand">А<span>Т</span></div>
-          <div class="admin-header-tsekh-label">Цех</div>
-        </div>
+        <div class="brand">А<span>Т</span></div>
         <div class="admin-header-tsekh-stats">
-          <div class="admin-header-tsekh-stat">
+          <div class="admin-header-tsekh-pill">
             <span class="stat-label">Блоков в цеху</span><span class="stat-value" id="admTsekhBlocksVal">—</span>
           </div>
-          <div class="admin-header-tsekh-stat">
+          <div class="admin-header-tsekh-pill">
             <span class="stat-label">Свободных мест</span><span class="stat-value" id="admTsekhFreeVal">—</span>
           </div>
         </div>
-        <div class="date-pill" style="font-size:10px;font-weight:700;color:var(--red);border:2px solid var(--red);border-radius:20px;padding:1px 8px;margin-left:8px;">—</div>
       </div>
     </header>
     <div class="swipe-viewport" id="adminViewport">
