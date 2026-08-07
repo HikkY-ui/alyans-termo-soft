@@ -64,7 +64,7 @@
     justify-content: space-between;
     flex-shrink: 0;
   }
-  .brand { font-weight: 800; font-size: 13px; letter-spacing: 0.5px; }
+  .brand { font-weight: 800; font-size: 13px; letter-spacing: -0.5px; }
   .brand span { color: var(--red); }
   .header-title { font-size: 13px; font-weight: 800; text-align: center; flex: 1; }
   .back-btn {
@@ -73,29 +73,21 @@
   }
   .header-spacer { width: 28px; flex-shrink: 0; }
 
-  /* ===== Admin: header swap (default title vs small Сырьё table on the Цех report screen) ===== */
+  /* ===== Admin: header swap (default title vs compact "АТ · Цех" + stats, on the Цех report screen) ===== */
   .admin-header-default {
     display: flex; align-items: center; justify-content: space-between; width: 100%;
   }
-  .admin-header-syre { display: none; width: 100%; }
-  .syre-header-table { width: 100%; border-collapse: collapse; }
-  .syre-header-table th {
-    font-size: 9px; font-weight: 700; color: var(--gray-text); text-transform: uppercase;
-    padding: 0 2px 1px; text-align: center;
+  .admin-header-tsekh { display: none; width: 100%; align-items: center; justify-content: space-between; }
+  .admin-header-tsekh-left { display: flex; align-items: baseline; gap: 22px; }
+  .admin-header-tsekh-label {
+    font-size: 13px; font-weight: 800; color: var(--black);
   }
-  .syre-header-table td {
-    font-size: 14px; font-weight: 800; color: var(--black); text-align: center; padding: 0 2px;
+  .admin-header-tsekh-stats { display: flex; flex-direction: column; align-items: flex-end; gap: 0; }
+  .admin-header-tsekh-stat { white-space: nowrap; line-height: 1.1; }
+  .admin-header-tsekh-stat .stat-label {
+    font-size: 8px; font-weight: 700; color: var(--gray-text); text-transform: uppercase; letter-spacing: 0.2px; margin-right: 3px;
   }
-
-  /* ===== Admin: compact single-line stat boxes (Цех report screen only) ===== */
-  .admin-compact-stats { padding: 3px 10px 3px; gap: 6px; }
-  .admin-compact-stats .stat-box {
-    display: flex; align-items: baseline; justify-content: center; gap: 4px; padding: 3px 4px;
-  }
-  .admin-compact-stats .stat-label {
-    font-size: 8px; font-weight: 700; color: var(--gray-text); text-transform: uppercase; letter-spacing: 0.2px; margin-top: 0;
-  }
-  .admin-compact-stats .stat-value { font-size: 11px; font-weight: 800; color: var(--black); line-height: 1; }
+  .admin-header-tsekh-stat .stat-value { font-size: 13px; font-weight: 800; color: var(--black); }
 
   /* ===== Screen: Login (role select) ===== */
   #screenLogin { justify-content: center; padding: 24px; gap: 14px; }
@@ -497,6 +489,16 @@
     border-right: 1px solid rgba(255,255,255,0.25);
   }
   .tsk-table thead th:last-child { border-right: none; }
+  .tsk-table thead tr.tsk-syre-row th {
+    background: var(--white);
+    color: var(--black);
+    padding: 0px 1px;
+    font-weight: 800;
+    line-height: 1.05;
+    border-right: 1px solid var(--gray-border);
+    border-bottom: 1px solid var(--gray-border);
+  }
+  .tsk-table thead tr.tsk-syre-row th:last-child { border-right: none; }
   .tsk-table tbody td {
     padding: 0px 1px;
     text-align: center;
@@ -716,34 +718,30 @@
       <div class="admin-header-default" id="adminHeaderDefault">
         <div class="brand">А<span>Т</span></div>
         <div class="header-title" id="adminScreenTitle">Отчёт · Цех</div>
-        <div class="header-spacer"></div>
+        <div class="date-pill" style="font-size:10px;font-weight:700;color:var(--red);border:2px solid var(--red);border-radius:20px;padding:1px 8px;">—</div>
       </div>
-      <div class="admin-header-syre" id="adminHeaderSyre">
-        <table class="syre-header-table">
-          <thead><tr><th>201</th><th>301</th><th>401</th><th>МИКС</th></tr></thead>
-          <tbody><tr>
-            <td id="admHeaderSyre-201">0</td>
-            <td id="admHeaderSyre-301">0</td>
-            <td id="admHeaderSyre-401">0</td>
-            <td id="admHeaderSyre-МИКС">0</td>
-          </tr></tbody>
-        </table>
+      <div class="admin-header-tsekh" id="adminHeaderTsekh">
+        <div class="admin-header-tsekh-left">
+          <div class="brand">А<span>Т</span></div>
+          <div class="admin-header-tsekh-label">Цех</div>
+        </div>
+        <div class="admin-header-tsekh-stats">
+          <div class="admin-header-tsekh-stat">
+            <span class="stat-label">Блоков в цеху</span><span class="stat-value" id="admTsekhBlocksVal">—</span>
+          </div>
+          <div class="admin-header-tsekh-stat">
+            <span class="stat-label">Свободных мест</span><span class="stat-value" id="admTsekhFreeVal">—</span>
+          </div>
+        </div>
+        <div class="date-pill" style="font-size:10px;font-weight:700;color:var(--red);border:2px solid var(--red);border-radius:20px;padding:1px 8px;margin-left:8px;">—</div>
       </div>
     </header>
     <div class="swipe-viewport" id="adminViewport">
       <div class="swipe-track" id="adminTrack">
 
-        <!-- Screen 0: Отчёт · Цех (read-only) -->
+        <!-- Screen 0: Отчёт · Цех (read-only) — сырьё is now labeled above its matching columns in the table itself -->
         <div class="swipe-screen">
           <div style="flex:1; min-height:0; display:flex; flex-direction:column;">
-            <div class="stats-row admin-compact-stats" id="admTsekhStatsRow">
-              <div class="stat-box">
-                <span class="stat-label">Блоков в цеху:</span> <span class="stat-value" id="admTsekhBlocksVal">—</span>
-              </div>
-              <div class="stat-box">
-                <span class="stat-label">Свободных мест:</span> <span class="stat-value" id="admTsekhFreeVal">—</span>
-              </div>
-            </div>
             <div class="tsk-table-wrap" id="admTsekhReportWrap"><div class="loading-note">Загрузка...</div></div>
           </div>
         </div>
@@ -1169,7 +1167,7 @@
     const API_URL = "https://script.google.com/macros/s/AKfycbwaJVr6TgQEEUeYsMdgyxc3KxLMK7g2JsXgI_XCrYaYdEdC_JpQRV0YJtUkFcja_74lSA/exec";
     const MARKS_MIN = 7;
     const MARKS_MAX = 40;
-    const MATERIALS = ["201", "301", "401", "БД", "Микс", "Рез"];
+    const MATERIALS = ["201", "301", "401", "Микс", "БД", "Рез"];
     const MATERIAL_LABELS = { "201": "201", "301": "301", "401": "401", "БД": "Б/Д", "Микс": "Микс", "Рез": "Рез" };
 
     let markaStr = "";
@@ -1607,8 +1605,14 @@
   const AdminTsekh = (function () {
     const API_URL = "https://script.google.com/macros/s/AKfycbwaJVr6TgQEEUeYsMdgyxc3KxLMK7g2JsXgI_XCrYaYdEdC_JpQRV0YJtUkFcja_74lSA/exec";
     const MARKS_MIN = 7, MARKS_MAX = 40;
-    const MATERIALS = ["201", "301", "401", "БД", "Микс", "Рез"];
+    const MATERIALS = ["201", "301", "401", "Микс", "БД", "Рез"];
     const MATERIAL_LABELS = { "201": "201", "301": "301", "401": "401", "БД": "Б/Д", "Микс": "Микс", "Рез": "Рез" };
+
+    // Сырьё (raw-material stock) is shown as a small label row above the matching report
+    // columns — only 201/301/401/Микс have a raw-material counterpart; Б/Д and Рез don't.
+    const SYRE_API_URL = "https://script.google.com/macros/s/AKfycbxPxSFtq6gqhkEBxVvFnxMo2svDX2i4IQ0byLcnk1KovPpucplwY3zuXmHABhoojev9Mg/exec";
+    const SYRE_KEY_FOR = { "201": "201", "301": "301", "401": "401", "Микс": "МИКС" };
+    let syreValues = { "201": 0, "301": 0, "401": 0, "МИКС": 0 };
 
     let markaStr = "", qtyStr = "", selectedMaterial = null, activeField = "marka";
     let lastData = null;
@@ -1688,20 +1692,33 @@
       }).catch(() => showToast("Ошибка сети — не сохранено"));
     }
     async function loadData() {
-      try {
-        const res = await fetch(`${API_URL}?action=getData`);
-        const data = await res.json();
-        lastData = data;
-        renderReport();
-      } catch (err) {
-        if (!lastData) document.getElementById("admTsekhReportWrap").innerHTML = '<div class="loading-note">Не удалось загрузить данные</div>';
+      const [tsekhResult, syreResult] = await Promise.allSettled([
+        fetch(`${API_URL}?action=getData`).then(res => res.json()),
+        fetch(`${SYRE_API_URL}?action=getData`).then(res => res.json())
+      ]);
+      if (tsekhResult.status === "fulfilled") {
+        lastData = tsekhResult.value;
+      } else if (!lastData) {
+        document.getElementById("admTsekhReportWrap").innerHTML = '<div class="loading-note">Не удалось загрузить данные</div>';
+        return;
       }
+      if (syreResult.status === "fulfilled" && syreResult.value.success) {
+        syreValues = syreResult.value.values;
+      }
+      renderReport();
     }
     function renderReport() {
       if (!lastData) return;
       document.getElementById("admTsekhBlocksVal").textContent = lastData.blocksInShop ?? 0;
       document.getElementById("admTsekhFreeVal").textContent = lastData.freeSlots ?? 198;
-      let html = '<table class="tsk-table"><thead><tr><th>Марка</th>';
+      let html = '<table class="tsk-table"><thead>';
+      html += '<tr class="tsk-syre-row"><th></th>';
+      MATERIALS.forEach(mat => {
+        const syreKey = SYRE_KEY_FOR[mat];
+        html += `<th>${syreKey !== undefined ? (syreValues[syreKey] ?? 0) : ""}</th>`;
+      });
+      html += '<th></th></tr>';
+      html += '<tr><th>Марка</th>';
       MATERIALS.forEach(mat => html += `<th>${MATERIAL_LABELS[mat]}</th>`);
       html += '<th>Объём</th></tr></thead><tbody>';
       lastData.rows.forEach(row => {
@@ -1945,39 +1962,11 @@
     return { init, setEditActive };
   })();
 
-  // ==================== ADMIN · SYRE HEADER (small report table that replaces the header on Отчёт · Цех) ====================
-  const AdminSyreHeader = (function () {
-    const API_URL = "https://script.google.com/macros/s/AKfycbxPxSFtq6gqhkEBxVvFnxMo2svDX2i4IQ0byLcnk1KovPpucplwY3zuXmHABhoojev9Mg/exec";
-    const MATERIALS = ["201", "301", "401", "МИКС"];
-    let pollTimer = null;
-
-    async function loadAndRender() {
-      try {
-        const res = await fetch(`${API_URL}?action=getData`);
-        const data = await res.json();
-        if (data.success) {
-          MATERIALS.forEach(m => {
-            const el = document.getElementById(`admHeaderSyre-${m}`);
-            if (el) el.textContent = data.values[m] ?? 0;
-          });
-        }
-      } catch (err) {
-        // Small header table — keep showing whatever was last loaded rather than an error state.
-      }
-    }
-
-    function setActive(active) {
-      document.getElementById("adminHeaderDefault").style.display = active ? "none" : "flex";
-      document.getElementById("adminHeaderSyre").style.display = active ? "flex" : "none";
-      if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
-      if (active) {
-        loadAndRender();
-        pollTimer = setInterval(loadAndRender, 5000);
-      }
-    }
-
-    return { setActive };
-  })();
+  // ==================== ADMIN HEADER TOGGLE (АТ·Цех + stats vs default title) ====================
+  function setAdminHeaderTsekhActive(active) {
+    document.getElementById("adminHeaderDefault").style.display = active ? "none" : "flex";
+    document.getElementById("adminHeaderTsekh").style.display = active ? "flex" : "none";
+  }
 
   // ==================== ROLE SWIPERS (created once, lazily) ====================
   const swipers = {};
@@ -2021,7 +2010,7 @@
           onChange: (i) => {
             document.getElementById("adminScreenTitle").textContent = ADMIN_SCREEN_TITLES[i];
             AdminTsekh.setPolling(i === 0);   // auto-refresh only while viewing the Цех report, matching the original app
-            AdminSyreHeader.setActive(i === 0); // header swaps to the Сырьё table only on the Цех report screen
+            setAdminHeaderTsekhActive(i === 0); // header swaps to "АТ · Цех" + stats only on the Цех report screen
             AdminSklad.setEditActive(i === 3); // vertical swipe (table cycling) only live on the Склад edit screen
           }
         }
