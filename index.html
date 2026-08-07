@@ -930,10 +930,26 @@
     showToast._tm = setTimeout(() => t.classList.remove("show"), 1800);
   }
 
+  // ==================== NETWORK: cache-proof GET ====================
+  // All the "read" endpoints below (getData / getAllData) are polled repeatedly against
+  // the exact same URL. Some environments — iOS PWA/WebView, mobile carrier proxies —
+  // will happily serve a cached copy of that response instead of hitting the network
+  // again, so a poll can silently keep returning the same stale snapshot until the app
+  // is fully closed and reopened (which resets the in-memory cache). This is what made
+  // the Сырьё table on the "сырье" role look frozen whenever the admin edited it: the
+  // GET requests kept "succeeding" but with old data. `_ts=` makes every request URL
+  // unique, and `cache: "no-store"` tells the browser not to consult its cache at all —
+  // together they guarantee every poll actually reaches the server.
+  function fetchFresh(url) {
+    const sep = url.includes("?") ? "&" : "?";
+    return fetch(`${url}${sep}_ts=${Date.now()}`, { cache: "no-store" });
+  }
+
   // ==================== TOP-LEVEL SCREEN SWITCH ====================
   function showTopScreen(id) {
     document.querySelectorAll(".top-screen").forEach(s => s.classList.toggle("active", s.id === id));
   }
+
 
   // ==================== SKLAD MODULE ====================
   const Sklad = (function () {
@@ -955,7 +971,7 @@
 
     async function loadAllData() {
       try {
-        const res = await fetch(`${API_URL}?action=getAllData`);
+        const res = await fetchFresh(`${API_URL}?action=getAllData`);
         const data = await res.json();
         ROWS = data.rows; COLS = data.cols; dataByTable = data.tables;
         loaded = true;
@@ -1304,7 +1320,7 @@
 
     async function loadTableData() {
       try {
-        const res = await fetch(`${API_URL}?action=getData`);
+        const res = await fetchFresh(`${API_URL}?action=getData`);
         const data = await res.json();
         lastData = data;
         renderTable(data);
@@ -1397,60 +1413,24 @@
     let activeIndex = 0;   // index into MATERIALS — which field is currently receiving keypad input
     let valStr = "";
     let loaded = false;
-
-    // ---- Anti-race-condition state ----
-    // reqSeq: every request that can update `values` (poll, add, or clearAll) gets an
-    // increasing id.
-    // appliedSeq: id of the last FULL-SNAPSHOT response we applied (poll / clearAll —
-    // both are authoritative for the whole table). A full snapshot is only applied if
-    // it's newer than the last one we applied, so a slow old poll can't overwrite a
-    // newer one.
-    // appliedSeqByMaterial: id of the last response applied to EACH individual material.
-    // An `add` response is only authoritative for the one material it was sent for — the
-    // server may still be mid-flight on a concurrent add for a *different* material, so
-    // its response must never overwrite the other three fields. This is what previously
-    // caused the numbers to visibly jump: replacing the whole `values` object from a
-    // single material's response briefly reverted the other, still-unconfirmed materials
-    // to their old value until their own response landed.
-    // pendingSaves: while an add/clearAll is in flight, the periodic poll skips applying
-    // (or skips entirely) so it can't roll back a value the user just entered but the
-    // server hasn't confirmed yet.
-    let reqSeq = 0;
-    let appliedSeq = 0;
-    let appliedSeqByMaterial = { "201": 0, "301": 0, "401": 0, "МИКС": 0 };
-    let pendingSaves = 0;
     let pollTimer = null;
 
     function activeMaterial() { return MATERIALS[activeIndex]; }
 
+    // Same sync method as Tsekh/AdminTsekh: no local optimistic bookkeeping — the summary
+    // always reflects the last successful getData response, and every write is followed
+    // by an explicit reload instead of being applied locally.
     async function loadValues() {
-      if (pendingSaves > 0) return; // a save is still unconfirmed — don't risk clobbering it this tick
-      const mySeq = ++reqSeq;
       try {
-        const res = await fetch(`${API_URL}?action=getData`);
+        const res = await fetchFresh(`${API_URL}?action=getData`);
         const data = await res.json();
-        // Re-check pendingSaves: a save may have started while this GET was in flight.
-        // BUG FIX: this GET was sent BEFORE mySeq was compared to appliedSeq below, so a
-        // slow poll (started, say, before a commitValue) can resolve AFTER that add's own
-        // response already landed and bumped appliedSeqByMaterial for its one material —
-        // while `appliedSeq` (the old global gate) was never touched by that add, so this
-        // stale poll used to pass `mySeq > appliedSeq` anyway and blindly overwrite the
-        // WHOLE `values` object, silently reverting the just-confirmed add. Applying the
-        // snapshot per material (against appliedSeqByMaterial, same as commitValue does)
-        // fixes this: a material with a newer confirmed write is left untouched.
-        if (data.success && pendingSaves === 0) {
-          MATERIALS.forEach(m => {
-            if (mySeq > appliedSeqByMaterial[m]) {
-              appliedSeqByMaterial[m] = mySeq;
-              if (data.values && data.values[m] !== undefined) values[m] = data.values[m];
-            }
-          });
-          if (mySeq > appliedSeq) appliedSeq = mySeq;
+        if (data.success) {
+          values = data.values;
           loaded = true;
           renderSummary();
         }
       } catch (err) {
-        // Keep whatever is already on screen — data will refresh on next successful action.
+        // Keep whatever is already on screen — data will refresh on next successful poll.
       }
     }
 
@@ -1552,69 +1532,32 @@
       const qty = sign * Number(valStr);
       const label = sign > 0 ? "+" : "−";
       showToast(`${material}: ${label}${valStr}`);
-
-      // Optimistic local update so the summary + field reset instantly.
-      values[material] = Math.max(0, (values[material] || 0) + qty);
-      renderSummary();
       advanceField();
 
-      pendingSaves++;
-      const mySeq = ++reqSeq;
       fetch(API_URL, {
         method: "POST",
         headers: { "Content-Type": "text/plain;charset=utf-8" },
         body: JSON.stringify({ action: "add", material, qty })
       }).then(res => res.json()).then(data => {
-        if (data.success) {
-          // Only touch the ONE material this request was for, and only if no newer
-          // response for that same material has already landed. A concurrent add for a
-          // different material may still be unconfirmed server-side, so its value in
-          // this response isn't authoritative yet — leave the other fields alone.
-          if (mySeq > appliedSeqByMaterial[material]) {
-            appliedSeqByMaterial[material] = mySeq;
-            const serverVal = data.values ? data.values[material] : undefined;
-            if (serverVal !== undefined) { values[material] = serverVal; renderSummary(); }
-          }
-        } else {
-          showToast("Не сохранилось на сервере — попробуйте снова");
-        }
-      }).catch(() => showToast("Ошибка сети — не сохранено"))
-        .finally(() => { pendingSaves--; });
+        if (data.success) loadValues(); // same as Tsekh's submitEntry: refetch instead of guessing the new total locally
+        else showToast("Не сохранилось на сервере — попробуйте снова");
+      }).catch(() => showToast("Ошибка сети — не сохранено"));
     }
 
     function clearAll() {
       const ok = confirm("Точно очистить все количества сырья? Это действие нельзя отменить.");
       if (!ok) return;
-      MATERIALS.forEach(m => values[m] = 0);
-      renderSummary();
       activeIndex = 0; valStr = "";
       renderFields(); updateBtnState();
 
-      pendingSaves++;
-      const mySeq = ++reqSeq;
       fetch(API_URL, {
         method: "POST",
         headers: { "Content-Type": "text/plain;charset=utf-8" },
         body: JSON.stringify({ action: "clearAll" })
       }).then(res => res.json()).then(data => {
-        if (data.success) {
-          // Same per-material gating as loadValues: only stamp a material as cleared if
-          // no request that started even later (a concurrent add) has already confirmed
-          // a newer value for it — otherwise this clear would wipe out that newer add.
-          MATERIALS.forEach(m => {
-            if (mySeq > appliedSeqByMaterial[m]) {
-              appliedSeqByMaterial[m] = mySeq;
-              values[m] = (data.values && data.values[m] !== undefined) ? data.values[m] : 0;
-            }
-          });
-          if (mySeq > appliedSeq) appliedSeq = mySeq;
-          renderSummary();
-          showToast("Очищено");
-        } else {
-          showToast("Не удалось очистить на сервере");
-        }
-      }).catch(() => showToast("Ошибка сети"))
-        .finally(() => { pendingSaves--; });
+        if (data.success) { showToast("Очищено"); loadValues(); }
+        else showToast("Не удалось очистить на сервере");
+      }).catch(() => showToast("Ошибка сети"));
     }
 
     let initialized = false;
@@ -1643,36 +1586,19 @@
     let activeIndex = 0;
     let valStr = "";
     let loaded = false;
-
-    let reqSeq = 0;
-    let appliedSeq = 0;
-    let appliedSeqByMaterial = { "201": 0, "301": 0, "401": 0, "МИКС": 0 };
-    let pendingSaves = 0;
     let pollTimer = null;
 
     function activeMaterial() { return MATERIALS[activeIndex]; }
 
+    // Same sync method as AdminTsekh: no local optimistic bookkeeping — the summary
+    // always reflects the last successful getData response, and every write is followed
+    // by an explicit reload instead of being applied locally.
     async function loadValues() {
-      if (pendingSaves > 0) return;
-      const mySeq = ++reqSeq;
       try {
-        const res = await fetch(`${API_URL}?action=getData`);
+        const res = await fetchFresh(`${API_URL}?action=getData`);
         const data = await res.json();
-        // BUG FIX: apply the snapshot per material (against appliedSeqByMaterial), not as
-        // one wholesale overwrite of `values`. A poll started before a commitValue can
-        // resolve after that add's own response already confirmed a newer value for its
-        // one material — the old `mySeq > appliedSeq` check didn't see that (appliedSeq
-        // is only bumped by full snapshots), so the stale poll won and silently reverted
-        // the just-saved add. This was the source of the Сырьё table desyncing between
-        // the "сырье" role and the admin's "Редактирование · Сырьё" screen.
-        if (data.success && pendingSaves === 0) {
-          MATERIALS.forEach(m => {
-            if (mySeq > appliedSeqByMaterial[m]) {
-              appliedSeqByMaterial[m] = mySeq;
-              if (data.values && data.values[m] !== undefined) values[m] = data.values[m];
-            }
-          });
-          if (mySeq > appliedSeq) appliedSeq = mySeq;
+        if (data.success) {
+          values = data.values;
           loaded = true;
           renderSummary();
         }
@@ -1779,61 +1705,32 @@
       const qty = sign * Number(valStr);
       const label = sign > 0 ? "+" : "−";
       showToast(`${material}: ${label}${valStr}`);
-
-      values[material] = Math.max(0, (values[material] || 0) + qty);
-      renderSummary();
       advanceField();
 
-      pendingSaves++;
-      const mySeq = ++reqSeq;
       fetch(API_URL, {
         method: "POST",
         headers: { "Content-Type": "text/plain;charset=utf-8" },
         body: JSON.stringify({ action: "add", material, qty })
       }).then(res => res.json()).then(data => {
-        if (data.success) {
-          if (mySeq > appliedSeqByMaterial[material]) {
-            appliedSeqByMaterial[material] = mySeq;
-            const serverVal = data.values ? data.values[material] : undefined;
-            if (serverVal !== undefined) { values[material] = serverVal; renderSummary(); }
-          }
-        } else {
-          showToast("Не сохранилось на сервере — попробуйте снова");
-        }
-      }).catch(() => showToast("Ошибка сети — не сохранено"))
-        .finally(() => { pendingSaves--; });
+        if (data.success) loadValues(); // same as AdminTsekh's submitEntry: refetch instead of guessing the new total locally
+        else showToast("Не сохранилось на сервере — попробуйте снова");
+      }).catch(() => showToast("Ошибка сети — не сохранено"));
     }
 
     function clearAll() {
       const ok = confirm("Точно очистить все количества сырья? Это действие нельзя отменить.");
       if (!ok) return;
-      MATERIALS.forEach(m => values[m] = 0);
-      renderSummary();
       activeIndex = 0; valStr = "";
       renderFields(); updateBtnState();
 
-      pendingSaves++;
-      const mySeq = ++reqSeq;
       fetch(API_URL, {
         method: "POST",
         headers: { "Content-Type": "text/plain;charset=utf-8" },
         body: JSON.stringify({ action: "clearAll" })
       }).then(res => res.json()).then(data => {
-        if (data.success) {
-          MATERIALS.forEach(m => {
-            if (mySeq > appliedSeqByMaterial[m]) {
-              appliedSeqByMaterial[m] = mySeq;
-              values[m] = (data.values && data.values[m] !== undefined) ? data.values[m] : 0;
-            }
-          });
-          if (mySeq > appliedSeq) appliedSeq = mySeq;
-          renderSummary();
-          showToast("Очищено");
-        } else {
-          showToast("Не удалось очистить на сервере");
-        }
-      }).catch(() => showToast("Ошибка сети"))
-        .finally(() => { pendingSaves--; });
+        if (data.success) { showToast("Очищено"); loadValues(); }
+        else showToast("Не удалось очистить на сервере");
+      }).catch(() => showToast("Ошибка сети"));
     }
 
     let initialized = false;
@@ -1942,8 +1839,8 @@
     }
     async function loadData() {
       const [tsekhResult, syreResult] = await Promise.allSettled([
-        fetch(`${API_URL}?action=getData`).then(res => res.json()),
-        fetch(`${SYRE_API_URL}?action=getData`).then(res => res.json())
+        fetchFresh(`${API_URL}?action=getData`).then(res => res.json()),
+        fetchFresh(`${SYRE_API_URL}?action=getData`).then(res => res.json())
       ]);
       if (tsekhResult.status === "fulfilled") {
         lastData = tsekhResult.value;
@@ -2033,7 +1930,7 @@
 
     async function loadAllData() {
       try {
-        const res = await fetch(`${API_URL}?action=getAllData`);
+        const res = await fetchFresh(`${API_URL}?action=getAllData`);
         const data = await res.json();
         ROWS = data.rows; COLS = data.cols; dataByTable = data.tables;
         loaded = true;
