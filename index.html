@@ -1430,10 +1430,22 @@
         const res = await fetch(`${API_URL}?action=getData`);
         const data = await res.json();
         // Re-check pendingSaves: a save may have started while this GET was in flight.
-        if (data.success && mySeq > appliedSeq && pendingSaves === 0) {
-          appliedSeq = mySeq;
-          values = data.values;
-          MATERIALS.forEach(m => { appliedSeqByMaterial[m] = mySeq; }); // this is a full, authoritative snapshot
+        // BUG FIX: this GET was sent BEFORE mySeq was compared to appliedSeq below, so a
+        // slow poll (started, say, before a commitValue) can resolve AFTER that add's own
+        // response already landed and bumped appliedSeqByMaterial for its one material —
+        // while `appliedSeq` (the old global gate) was never touched by that add, so this
+        // stale poll used to pass `mySeq > appliedSeq` anyway and blindly overwrite the
+        // WHOLE `values` object, silently reverting the just-confirmed add. Applying the
+        // snapshot per material (against appliedSeqByMaterial, same as commitValue does)
+        // fixes this: a material with a newer confirmed write is left untouched.
+        if (data.success && pendingSaves === 0) {
+          MATERIALS.forEach(m => {
+            if (mySeq > appliedSeqByMaterial[m]) {
+              appliedSeqByMaterial[m] = mySeq;
+              if (data.values && data.values[m] !== undefined) values[m] = data.values[m];
+            }
+          });
+          if (mySeq > appliedSeq) appliedSeq = mySeq;
           loaded = true;
           renderSummary();
         }
@@ -1586,14 +1598,17 @@
         body: JSON.stringify({ action: "clearAll" })
       }).then(res => res.json()).then(data => {
         if (data.success) {
-          if (mySeq > appliedSeq) {
-            appliedSeq = mySeq;
-            MATERIALS.forEach(m => {
+          // Same per-material gating as loadValues: only stamp a material as cleared if
+          // no request that started even later (a concurrent add) has already confirmed
+          // a newer value for it — otherwise this clear would wipe out that newer add.
+          MATERIALS.forEach(m => {
+            if (mySeq > appliedSeqByMaterial[m]) {
+              appliedSeqByMaterial[m] = mySeq;
               values[m] = (data.values && data.values[m] !== undefined) ? data.values[m] : 0;
-              appliedSeqByMaterial[m] = mySeq; // invalidate any earlier add responses still in flight
-            });
-            renderSummary();
-          }
+            }
+          });
+          if (mySeq > appliedSeq) appliedSeq = mySeq;
+          renderSummary();
           showToast("Очищено");
         } else {
           showToast("Не удалось очистить на сервере");
@@ -1643,10 +1658,21 @@
       try {
         const res = await fetch(`${API_URL}?action=getData`);
         const data = await res.json();
-        if (data.success && mySeq > appliedSeq && pendingSaves === 0) {
-          appliedSeq = mySeq;
-          values = data.values;
-          MATERIALS.forEach(m => { appliedSeqByMaterial[m] = mySeq; });
+        // BUG FIX: apply the snapshot per material (against appliedSeqByMaterial), not as
+        // one wholesale overwrite of `values`. A poll started before a commitValue can
+        // resolve after that add's own response already confirmed a newer value for its
+        // one material — the old `mySeq > appliedSeq` check didn't see that (appliedSeq
+        // is only bumped by full snapshots), so the stale poll won and silently reverted
+        // the just-saved add. This was the source of the Сырьё table desyncing between
+        // the "сырье" role and the admin's "Редактирование · Сырьё" screen.
+        if (data.success && pendingSaves === 0) {
+          MATERIALS.forEach(m => {
+            if (mySeq > appliedSeqByMaterial[m]) {
+              appliedSeqByMaterial[m] = mySeq;
+              if (data.values && data.values[m] !== undefined) values[m] = data.values[m];
+            }
+          });
+          if (mySeq > appliedSeq) appliedSeq = mySeq;
           loaded = true;
           renderSummary();
         }
@@ -1794,14 +1820,14 @@
         body: JSON.stringify({ action: "clearAll" })
       }).then(res => res.json()).then(data => {
         if (data.success) {
-          if (mySeq > appliedSeq) {
-            appliedSeq = mySeq;
-            MATERIALS.forEach(m => {
-              values[m] = (data.values && data.values[m] !== undefined) ? data.values[m] : 0;
+          MATERIALS.forEach(m => {
+            if (mySeq > appliedSeqByMaterial[m]) {
               appliedSeqByMaterial[m] = mySeq;
-            });
-            renderSummary();
-          }
+              values[m] = (data.values && data.values[m] !== undefined) ? data.values[m] : 0;
+            }
+          });
+          if (mySeq > appliedSeq) appliedSeq = mySeq;
+          renderSummary();
           showToast("Очищено");
         } else {
           showToast("Не удалось очистить на сервере");
