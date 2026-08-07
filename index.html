@@ -1382,16 +1382,45 @@
     let valStr = "";
     let loaded = false;
 
+    // ---- Anti-race-condition state ----
+    // reqSeq/appliedSeq: every request that can update `values` (poll or save) gets an
+    // increasing id; a response is only applied if its id is newer than the last one we
+    // actually applied. This stops a slow, older request's response from landing after a
+    // newer one and overwriting fresher data with a stale snapshot.
+    // pendingSaves: while an add/clearAll is in flight, the periodic poll skips applying
+    // (or skips entirely) so it can't roll back a value the user just entered but the
+    // server hasn't confirmed yet.
+    let reqSeq = 0;
+    let appliedSeq = 0;
+    let pendingSaves = 0;
+    let pollTimer = null;
+
     function activeMaterial() { return MATERIALS[activeIndex]; }
 
     async function loadValues() {
+      if (pendingSaves > 0) return; // a save is still unconfirmed — don't risk clobbering it this tick
+      const mySeq = ++reqSeq;
       try {
         const res = await fetch(`${API_URL}?action=getData`);
         const data = await res.json();
-        if (data.success) { values = data.values; loaded = true; renderSummary(); }
+        // Re-check pendingSaves: a save may have started while this GET was in flight.
+        if (data.success && mySeq > appliedSeq && pendingSaves === 0) {
+          appliedSeq = mySeq;
+          values = data.values;
+          loaded = true;
+          renderSummary();
+        }
       } catch (err) {
         // Keep whatever is already on screen — data will refresh on next successful action.
       }
+    }
+
+    function startPolling() {
+      if (pollTimer) return;
+      pollTimer = setInterval(loadValues, 5000);
+    }
+    function stopPolling() {
+      if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
     }
 
     function renderSummary() {
@@ -1490,14 +1519,22 @@
       renderSummary();
       advanceField();
 
+      pendingSaves++;
+      const mySeq = ++reqSeq;
       fetch(API_URL, {
         method: "POST",
         headers: { "Content-Type": "text/plain;charset=utf-8" },
         body: JSON.stringify({ action: "add", material, qty })
       }).then(res => res.json()).then(data => {
-        if (data.success) { values = data.values; renderSummary(); }
-        else showToast("Не сохранилось на сервере — попробуйте снова");
-      }).catch(() => showToast("Ошибка сети — не сохранено"));
+        if (data.success) {
+          // Only apply if no newer request has already landed — an older response
+          // arriving late must not overwrite data a more recent request already set.
+          if (mySeq > appliedSeq) { appliedSeq = mySeq; values = data.values; renderSummary(); }
+        } else {
+          showToast("Не сохранилось на сервере — попробуйте снова");
+        }
+      }).catch(() => showToast("Ошибка сети — не сохранено"))
+        .finally(() => { pendingSaves--; });
     }
 
     function clearAll() {
@@ -1507,14 +1544,22 @@
       renderSummary();
       activeIndex = 0; valStr = "";
       renderFields(); updateBtnState();
+
+      pendingSaves++;
+      const mySeq = ++reqSeq;
       fetch(API_URL, {
         method: "POST",
         headers: { "Content-Type": "text/plain;charset=utf-8" },
         body: JSON.stringify({ action: "clearAll" })
       }).then(res => res.json()).then(data => {
-        if (data.success) { values = data.values; renderSummary(); showToast("Очищено"); }
-        else showToast("Не удалось очистить на сервере");
-      }).catch(() => showToast("Ошибка сети"));
+        if (data.success) {
+          if (mySeq > appliedSeq) { appliedSeq = mySeq; values = data.values; renderSummary(); }
+          showToast("Очищено");
+        } else {
+          showToast("Не удалось очистить на сервере");
+        }
+      }).catch(() => showToast("Ошибка сети"))
+        .finally(() => { pendingSaves--; });
     }
 
     let initialized = false;
@@ -1528,9 +1573,10 @@
       document.getElementById("syreClearAllBtn").onclick = clearAll;
       document.getElementById("syreDeleteBtn").onclick = () => commitValue(-1);
       loadValues();
+      startPolling(); // keeps the table in sync with edits made from another phone
     }
 
-    return { init };
+    return { init, stopPolling };
   })();
 
   // ==================== ADMIN · TSEKH (report + edit, sharing one data source) ====================
@@ -1975,6 +2021,7 @@
     btn.onclick = () => {
       const ok = confirm("Выйти из аккаунта? При следующем входе понадобится код доступа.");
       if (!ok) return;
+      if (btn.dataset.exit === "syre") Syre.stopPolling();
       localStorage.removeItem(STORAGE_KEY);
       showTopScreen("screenLogin");
     };
